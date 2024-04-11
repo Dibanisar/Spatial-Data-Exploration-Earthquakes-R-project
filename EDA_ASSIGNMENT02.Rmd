@@ -1,0 +1,488 @@
+---
+title: "ASSIGNMENT02"
+author: "Dibanisa Fakude"
+date: "2024-03-03"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r,echo=FALSE}
+
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(tidyverse)
+library(lubridate)
+
+# Read earthquake data and convert "Date" column to Date format
+earthquake_data <- read.csv("~/EDA_ASSIGNMENTS/ASSIGNMENT2/Earthquakes 1965 - 2016.csv") %>%
+  as_tibble() %>%
+  mutate(Date_Time = mdy_hms(paste(Date, Time))) %>%
+  select(-Date,-Time)
+
+# Read query data and separate "Time" column into "Date" and "Time"
+query_data <- read.csv("~/EDA_ASSIGNMENTS/ASSIGNMENT2/query.csv") %>%
+  as_tibble() 
+
+
+
+# Rename variables in query_data to match earthquake_data
+query_data <- query_data %>%
+  rename(Latitude = latitude, Longitude = longitude, Depth = depth, Magnitude = mag, Magnitude.Type = magType,
+         ID = id, Type = type, Status = status, Location.Source = locationSource, Magnitude.Error = magError,
+         Magnitude.Source = magSource, Azimuthal.Gap = gap, Root.Mean.Square = rms, Horizontal.Error = horizontalError,
+         Depth.Error = depthError, Magnitude.Seismic.Stations = magNst, Date_Time = time)
+
+
+
+# mKA THE FIRST LETTER UPPERCASES
+query_data <- query_data %>%
+  mutate(Type = str_to_title(Type))
+#Changing the Date Time Column in query data to Date format
+  query_data <- query_data %>%
+  mutate(Date_Time = ymd_hms(Date_Time))
+
+# Merge the datasets
+merged_data <- bind_rows(earthquake_data, query_data)
+
+
+```
+Explore the range of magnitudes (Richter scale) in both datasets. Is there a reason to
+exclude any measurements in either? Implement and discuss briefly.
+
+```{r,echo=FALSE}
+
+
+  
+# Calculate the range of magnitudes in the first dataset
+min_magnitude_df1 <- min(earthquake_data$Magnitude)
+max_magnitude_df1 <- max(earthquake_data$Magnitude)
+
+# Calculate the range of magnitudes in the second dataset
+min_magnitude_df2 <- min(query_data$Magnitude)
+max_magnitude_df2 <- max(query_data$Magnitude)
+
+# Print the range of magnitudes in both datasets
+cat("Range of magnitudes in the first dataset:", min_magnitude_df1, "-", max_magnitude_df1, "\n")
+cat("Range of magnitudes in the second dataset:", min_magnitude_df2, "-", max_magnitude_df2, "\n")
+
+
+# Create a dataframe with dataset names and their respective range of magnitudes
+data_ranges <- data.frame(
+  Dataset = c("Earthquake Data ", "Query Data"),
+  Min_Magnitude = c(5.5, 5),
+  Max_Magnitude = c(9.1, 8.2)
+)
+
+# Plot the ranges as horizontal lines
+ggplot(data_ranges, aes(y = Dataset, x = Max_Magnitude, xmin = Min_Magnitude, xmax = Max_Magnitude, color = Dataset)) +
+  geom_point(size = 3) +
+  geom_errorbarh(height = 0.2) +
+  labs(title = "Range of Magnitudes in Datasets",
+       x = "Magnitude",
+       y = "") +
+  theme(plot.title = element_text(hjust = 0.5)+
+  theme_minimal())
+```
+
+Report on the extent of missing data in the common variables. Is it worth keeping any
+of the information for variables with missing data? Likewise for common variables with
+a discrepancy in values. Implement and discuss briefly.
+```{r,echo=FALSE}
+
+library(dplyr)
+
+
+# Define the variable names
+variable_names <- c(
+  "Latitude", "Longitude", "Type", "Depth", "Depth.Error",
+  "Depth.Seismic.Stations", "Magnitude", "Magnitude.Type", 
+  "Magnitude.Error", "Magnitude.Seismic.Stations", "Azimuthal.Gap",
+  "Horizontal.Distance", "Horizontal.Error", "Root.Mean.Square",
+  "ID", "Source", "Location.Source", "Magnitude.Source",
+  "Status", "Date_Time", "nst", "dmin", "net", "updated", "place"
+)
+
+# Create a report on missing data for each variable
+missing_report <- lapply(variable_names, function(var) {
+  missing_count <- sum(is.na(merged_data[[var]]))
+  data.frame(
+    Variable = var,
+    Missing_Count = missing_count
+  )
+})
+
+# Combine the report into a single dataframe
+missing_report_df <- do.call(rbind, missing_report)
+
+# Print the report
+print(missing_report_df)
+#First Exxclude the ones with zeros
+# Exclude variables with zero missing counts and arrange in descending order
+missing_report_filtered <- missing_report_df %>%
+  filter(Missing_Count != 0) %>%
+  arrange(desc(Missing_Count))
+
+# Plot bar graph
+ggplot(missing_report_filtered, aes(x = reorder(Variable, -Missing_Count), y = Missing_Count)) +
+  geom_bar(stat = "identity", fill = "black", alpha =0.6) +
+  labs(title = "Missing Data Counts for Variables with Missing Values",
+       x = "Variable", y = "Missing Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+
+
+ Provide a summary of the types of events and then filter the observations to only include
+```{r,echo=FALSE}
+
+Summaryevents<-merged_data %>% 
+  group_by(Type) %>% 
+  summarise(mean = mean(Magnitude),
+            maxMagnitude= max(Magnitude),
+            minMagnitude = min(Magnitude),
+            NumberofEvents = n())
+
+Summaryevents
+
+# Filter observations to include only "Earthquake" type events
+earthquakes <- merged_data  %>%
+  filter(Type == "Earthquake")
+  
+```
+
+Add a categorical variable “Scale”, which classifies the earthquakes according to their
+magnitude. Classify and name the categories according to the “Description” column in
+the table on this page.
+```{r,echo=FALSE}
+earthquakes<- earthquakes %>% 
+  mutate(Scale = case_when(
+    Magnitude >= 1.0 & Magnitude <= 1.9 ~ "Micro",
+    Magnitude >= 2.0 & Magnitude <= 2.9 ~ "Minor",
+    Magnitude >= 3.0 & Magnitude <= 3.9 ~ "Slight",
+    Magnitude >= 4.0 & Magnitude <= 4.9 ~ "Light",
+    Magnitude >= 5.0 & Magnitude <= 5.9 ~ "Moderate",
+    Magnitude >= 6.0 & Magnitude <= 6.9 ~ "Strong",
+    Magnitude >= 7.0 & Magnitude <= 7.9 ~ "Major",
+    Magnitude >= 8.0 & Magnitude <= 8.9 ~ "Great",
+    Magnitude >= 9.0 & Magnitude <= 9.9 ~ "Extreme",
+    TRUE ~ "Unknown"
+  ))
+  
+```
+The distributions of the features. Decide which features to investigate and provide the
+appropriate plots/measurements.
+
+```{r,echo=FALSE}
+library(gridExtra)
+
+# Select features for investigation
+features_to_explore <- c("Magnitude", "Depth")
+
+# Generate histograms for selected features
+histograms <- lapply(features_to_explore, function(feature) {
+  ggplot(earthquake_data, aes(x = !!sym(feature))) +
+    geom_histogram(fill = "grey", color = "black", bins = 20) +
+    labs(title = paste("Histogram of", feature),
+         x = feature,
+         y = "Frequency") +
+    theme_bw()+
+    theme(plot.title = element_text(hjust = 0.5))
+})
+
+# Combine histograms into one plot
+combined_plot <- do.call(grid.arrange, histograms)
+
+# Print combined plot
+print(combined_plot)
+
+
+
+```
+The largest earthquakes, according to magnitude. Choose a number of them and present
+and discuss in an appropriate way.
+
+```{r,echo=FALSE}
+# Filter earthquakes based on scale
+large_earth <- earthquakes %>% 
+  filter(Scale == "Extreme")
+
+# Create a new dataframe containing latitude, longitude, magnitude, and scale information
+largest_earthquakes <- data.frame(
+  Latitude = large_earth$Latitude,
+  Longitude = large_earth$Longitude,
+  Magnitude = large_earth$Magnitude,
+  Scale = large_earth$Scale
+)
+
+# View the resulting dataframe
+largest_earthquakes
+
+```
+The relationship between depth and magnitude, is there any pattern worth noting? Note
+that the Richter scale is logarithmic, such that an increase of 1 unit corresponds to a
+tenfold increase in actual magnitude, and a 31-fold increase in energy. How does the
+picture change when adjusting the magnitude accordingly?
+
+```{r,echo=FALSE}
+#The relationship between depth and Magnitude
+cor(earthquakes$Depth,earthquakes$Magnitude)
+
+
+# Scatter plot of depth versus magnitude
+ggplot(earthquakes, aes(x = Depth, y = Magnitude)) +
+  geom_point(alpha =0.5) +
+  labs(title = "Depth vs Magnitude",
+       x = "Depth",
+       y = "Magnitude") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Adjust magnitude values using logarithmic scale of Richter scale
+earthquakes$log_Magnitude <- log10(earthquakes$Magnitude)
+
+# Scatter plot of depth versus adjusted magnitude
+ggplot(earthquakes, aes(x = Depth, y = log_Magnitude)) +
+  geom_point(alpha =0.5) +
+  labs(title = "Depth vs Adjusted Magnitude (log scale)",
+       x = "Depth",
+       y = "Adjusted Magnitude") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+Choose one of the types of events that were removed and briefly investigate these events.
+When and where did they take place? Provide a map showing this.
+
+```{r,echo=FALSE}
+# Load world map data into a dataframe named world_map
+world_map <- map_data("world")
+
+# Filter map data for Turkey
+map_hawaii <- world_map %>% filter(region == "Hawaii")
+
+# Filter volcanic eruption data and removing the deviated point
+volcanic_eruptions <- merged_data %>%
+  filter(Type == "Volcanic Eruption" & !ID == "us7000gc8r") 
+
+
+# Plot the volcanic eruptions on a map
+hawaii<-ggplot() +
+  borders("world", colour = "gray50", fill = "gray80") +
+    geom_point(data = volcanic_eruptions, aes(x = Longitude, y = Latitude), color = "red", size = 3) +
+  theme_bw() +
+  labs(title = "Locations of Volcanic Eruptions",
+       x = "Longitude", y = "Latitude") +
+  xlim(-160, -150) +
+  ylim(19, 23)
+
+city_labels <- data.frame(
+  city = "Hawaii",
+  lon = -155.844437,
+  lat = 19.741755
+)
+
+Label <- hawaii +
+  geom_text(data = city_labels, aes(x = lon, y = lat, label = city), size = 3, hjust = 0, vjust = -0.5)
+
+Label
+
+```
+How do the frequency of earthquakes in each category compare to estimated frequencies,
+like those given here or here?
+Do we observe any patterns over time? Is this a definite function of time, or perhaps an
+artefact of the data?
+
+```{r,echo=FALSE}
+#Temporal Investigation
+#Summary 3
+library(tidyr)
+library(ggplot2)
+earthquakes %>% 
+  group_by(Scale) %>% 
+  summarise(count=n(),
+            averageMagnitude = mean(Magnitude))
+
+# Calculate the frequency of earthquakes by scale and year
+freq_earth_wide <- earthquakes %>%
+  filter(Scale != "Unknown") %>%  # Filter out rows with "Unknown" in Scale column
+  group_by(Scale, year = lubridate::year(Date_Time)) %>%
+  count()
+
+# Define colors for each earthquake scale
+colors <- c("red", "green", "blue", "orange", "purple", "yellow")
+
+# Create a line plot of frequency of earthquakes by scale and year
+freq_earth_wide %>%
+  ggplot(aes(x = year, y = n, color = Scale)) +
+  geom_line() +  # Add lines
+  facet_grid(~Scale) +  # Facet the plot by Scale
+  labs(title = "Frequency of Earthquakes by Scale and Year",  # Add title and axis labels
+       y = "Frequency",
+       x = "Year") +
+  scale_color_manual(values = colors) +  # Set colors for each scale
+  theme_bw() +  # Use a black and white theme
+  theme(
+    plot.title = element_text(hjust = 0.5)  # Center the title horizontally
+  )
+
+```
+
+4. Spatial Exploration
+The country of T¨urkiye (Turkey). On 6 February 2023, a magnitude 7.8 earthquake
+devastated the southern region. How does this compare with previous occurrences in
+the region? How often do they experiences major or great earthquakes?
+
+```{r,echo=FALSE}
+#number 1
+library(maps)
+
+# Load world map data into a dataframe named world_map
+world_map <- map_data("world")
+mapturkey <- world_map %>% filter(region == "Turkey")
+turkeydata1 <- earthquakes %>% filter(Date_Time <= as.Date("2023-02-06"))
+title <- "Previous Earthquakes in The Turkey Region"
+#Findinf the mean of the prevois earthquakes to compare with the currecnt 7.8
+turkeydata1 %>% 
+  group_by(Scale) %>% 
+  summarise(MeanEarth= mean(Magnitude))
+# Plotting
+ear <- ggplot() +
+  geom_map(data = mapturkey, map = mapturkey, 
+           aes(x = long, y = lat, map_id = region), fill = "grey", color = "black", size = 0.5) +
+  geom_point(data = turkeydata1, aes(x = Longitude, y = Latitude, color = Magnitude), size = 5) +
+  scale_colour_gradient(low = "blue", high = "red") +
+  ggtitle(title) +
+  xlim(26.0, 45.0) +
+  ylim(36.0, 42.0)+
+theme_bw()
+
+city_labels <- data.frame(
+  city = c("Ankara", "Istanbul", "Izmir", "Antalya", "Adana"),
+  lon = c(32.8541, 28.9784, 27.1428, 30.7133, 35.3228),
+  lat = c(39.9356, 41.0082, 38.4192, 36.8969, 37.0015)
+)
+
+ear1 <- ear +
+  geom_text(data = city_labels, aes(x = lon, y = lat, label = city), size = 3, hjust = 0, vjust = -0.5)
+
+ear1
+
+View(turkeydata1)
+```
+
+
+```{r,echo=FALSE}
+#How often they experience major or great
+
+# Load world map data into a dataframe named world_map
+world_map <- map_data("world")
+mapturkey <- world_map %>% filter(region == "Turkey")
+turkeydata1 <- earthquakes %>% filter(Scale == "Major"| Scale == "Great")
+title <- "earthquakes"
+
+count(turkeydata1)
+
+
+
+# Plotting
+ear <- ggplot() +
+  geom_map(data = mapturkey, map = mapturkey, 
+           aes(x = long, y = lat, map_id = region), fill = "grey", color = "black", size = 0.5) +
+  geom_point(data = turkeydata1, aes(x = Longitude, y = Latitude, color = Magnitude), size = 5) +
+  scale_colour_gradient(low = "blue", high = "red") +
+  ggtitle(title) +
+  xlim(26.0, 45.0) +
+  ylim(36.0, 42.0)+
+theme_bw()
+
+city_labels <- data.frame(
+  city = c("Ankara", "Istanbul", "Izmir", "Antalya", "Adana"),
+  lon = c(32.8541, 28.9784, 27.1428, 30.7133, 35.3228),
+  lat = c(39.9356, 41.0082, 38.4192, 36.8969, 37.0015)
+)
+
+ear1 <- ear +
+  geom_text(data = city_labels, aes(x = lon, y = lat, label = city), size = 3, hjust = 0, vjust = -0.5)
+
+ear1
+
+```
+
+Southern Africa, including some area off the South African coast. How many earthquakes
+have we experienced since 1965? Which was the largest?
+```{r,echo=FALSE}
+
+library(maps)
+library(ggplot2)
+library(dplyr)
+
+# Filter map data for Southern Africa
+world_map <- map_data("world")
+map_southern_africa <- world_map %>%
+  filter(region %in% c("South Africa", "Lesotho", "Eswatini", "Namibia", "Botswana", "Zimbabwe", "Mozambique"))
+
+# Filter earthquakes data for Southern Africa
+southern_africa_quakes <- earthquakes %>%
+  filter(Latitude >= -35 & Latitude <= -10,
+         Longitude >= 10 & Longitude <= 40,
+         Date_Time >= as.Date("1965-01-01"))
+count(southern_africa_quakes)
+# Find the largest earthquake in Southern Africa
+largest_earthquake <- southern_africa_quakes %>%
+  filter(Magnitude == max(Magnitude))
+
+# Print the number of earthquakes in Southern Africa since 1965 and the details of the largest earthquake
+cat("Number of earthquakes in Southern Africa since 1965:", nrow(southern_africa_quakes), "\n")
+cat("Details of the largest earthquake in Southern Africa since 1965:\n")
+print(largest_earthquake)
+
+# Plotting
+ggplot() +
+  geom_map(data = map_southern_africa, map = map_southern_africa, 
+           aes(x = long, y = lat, map_id = region), fill = "grey", color = "black", size = 0.5) +
+  geom_point(data = southern_africa_quakes, aes(x = Longitude, y = Latitude, color = Magnitude), size = 5) +
+  scale_colour_gradient(low = "blue", high = "red") +
+  ggtitle("Earthquakes in Southern Africa since 1965") +
+  theme_bw()
+
+
+```
+An area/country of your choosing. This could be based on your global map, or because
+you have an interest in a specific region for whatever reason.
+
+```{r,echo=FALSE}
+#Number 3
+library(ggplot2)
+library(maps)
+library(dplyr)
+
+
+# Filter map data for Japan
+world_map <- map_data("world")
+map_japan <- world_map %>%
+  filter(region == "Japan")
+
+# Filter earthquakes data for Japan since 1965
+japan_quakes <- earthquakes %>%
+  filter(Latitude >= 24 & Latitude <= 45,
+         Longitude >= 122 & Longitude <= 153,
+         Date_Time >= as.Date("1965-01-01"))
+
+# Count the number of earthquakes in Japan since 1965
+num_quakes_japan <- nrow(japan_quakes)
+
+# Find the largest earthquake in Japan since 1965
+largest_earthquake_japan <- japan_quakes %>%
+  filter(Magnitude == max(Magnitude))
+
+# Print the number of earthquakes in Japan since 1965 and the details of the largest earthquake
+cat("Number of earthquakes in Japan since 1965:", num_quakes_japan, "\n")
+cat("Details of the largest earthquake in Japan since 1965:\n")
+print(largest_earthquake_japan)
+
+
+```
+
+
+
